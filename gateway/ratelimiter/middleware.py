@@ -1,15 +1,12 @@
 import time
-import threading
+import logging
 from django.http import JsonResponse
+from ratelimiter.config import resolve_algorithm_config
+from ratelimiter.algorithms.factory import get_limiter
+from ratelimiter.headers import build_rate_limit_headers
+from observability.metrics import rate_limit_decisions_total, rate_limit_check_duration_seconds
 
-# In-process only — lives in this worker's memory, gone on restart,
-# invisible to the other 2 gateway replicas. That gap is the whole point
-# of Day 1: prove this breaks under multi-instance before Redis fixes it.
-_counters = {}
-_lock = threading.Lock()
-
-WINDOW_SECONDS = 60
-MAX_REQUESTS = 5
+logger = logging.getLogger('ratelimiter')
 
 
 class RateLimitMiddleware:
@@ -17,33 +14,37 @@ class RateLimitMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if request.path == '/healthz':
+        if request.path in ('/healthz', '/metrics') or request.path.startswith('/admin'):
             return self.get_response(request)
 
         api_key = getattr(request, 'api_key', None)
         if not api_key:
-            # auth middleware already rejects missing keys — this is a
-            # safety fallback, not the primary check
             return self.get_response(request)
 
-        now = time.time()
+        config = resolve_algorithm_config(request.path, api_key)
+        limiter = get_limiter(config)
 
-        with _lock:
-            window_start, count = _counters.get(api_key, (now, 0))
+        start = time.time()
+        allowed, remaining_or_count, retry_after = limiter.check(api_key)
+        rate_limit_check_duration_seconds.labels(algorithm=config['algorithm']).observe(time.time() - start)
 
-            if now - window_start > WINDOW_SECONDS:
-                # window expired, reset
-                window_start, count = now, 0
+        limit_value = config.get('capacity') or config.get('limit')
+        log_fields = {
+            'api_key_prefix': api_key[:8], 'path': request.path,
+            'algorithm': config['algorithm'], 'allowed': allowed, 'limit': limit_value,
+        }
 
-            count += 1
-            _counters[api_key] = (window_start, count)
+        if not allowed:
+            rate_limit_decisions_total.labels(algorithm=config['algorithm'], decision='rejected').inc()
+            logger.warning('rate_limit_rejected', extra={**log_fields, 'retry_after': retry_after})
+            headers = build_rate_limit_headers(limit_value, 0, retry_after)
+            return JsonResponse({'detail': 'rate limit exceeded'}, status=429, headers=headers)
 
-        if count > MAX_REQUESTS:
-            retry_after = int(WINDOW_SECONDS - (now - window_start))
-            return JsonResponse(
-                {'detail': 'rate limit exceeded'},
-                status=429,
-                headers={'Retry-After': str(max(retry_after, 1))},
-            )
+        rate_limit_decisions_total.labels(algorithm=config['algorithm'], decision='allowed').inc()
+        logger.info('rate_limit_allowed', extra=log_fields)
 
-        return self.get_response(request)
+        response = self.get_response(request)
+        headers = build_rate_limit_headers(limit_value, limit_value - remaining_or_count if config['algorithm'] != 'token_bucket' else remaining_or_count)
+        for key, value in headers.items():
+            response[key] = value
+        return response

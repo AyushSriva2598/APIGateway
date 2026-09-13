@@ -21,5 +21,6 @@ from proxy.views import ProxyView
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('',include("core.urls")),
+    path('', include('django_prometheus.urls')),   
     re_path(r'^(?P<path>.*)$', ProxyView.as_view()),
 ]
