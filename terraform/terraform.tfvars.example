@@ -1,0 +1,11 @@
+project           = "apigateway"
+region            = "us-east-1"
+vpc_cidr          = "10.0.0.0/16"
+demo_ssh_cidr     = "YOUR_IP/32"                 # Run: curl -s ifconfig.me
+key_pair_name     = "your-keypair-name"           # Must exist in us-east-1
+django_secret_key = "change-me-random-string-42"
+allowed_hosts     = "*"
+alert_email       = "ayushsriva2598@gmail.com"
+
+# DNS (leave empty to skip Route 53)
+domain_name       = ""
