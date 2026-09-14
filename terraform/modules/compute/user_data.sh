@@ -16,6 +16,10 @@ curl -SL "https://github.com/docker/compose/releases/latest/download/docker-comp
   -o $DOCKER_CONFIG/docker-compose
 chmod +x $DOCKER_CONFIG/docker-compose
 
+curl -SL "https://github.com/docker/buildx/releases/download/v0.21.1/buildx-v0.21.1.linux-amd64" \
+  -o $DOCKER_CONFIG/docker-buildx
+chmod +x $DOCKER_CONFIG/docker-buildx
+
 # ── Clone Repo ──
 cd /opt
 git clone --depth 1 https://github.com/AyushSriva2598/APIGateway.git apigateway
@@ -146,8 +150,9 @@ REDIS_HOST=${redis_host}
 REDIS_PORT=${redis_port}
 EOF
 
-# ── Launch ──
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# ── Build & Launch ──
+docker build -t apigateway-gateway:latest -f Dockerfile.prod .
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 
 # ── Wait → Migrate → Seed ──
 echo "Waiting for containers..."

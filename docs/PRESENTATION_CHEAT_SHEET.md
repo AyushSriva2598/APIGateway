@@ -63,15 +63,15 @@ Open AWS Console showing the VPC subnets, ALB, and ElastiCache.
 **What to Do**:
 Set your variables in your terminal:
 ```bash
-ALB="<PASTE_YOUR_ALB_URL_HERE>"
-KEY="<PASTE_YOUR_DEMO_FREE_KEY_HERE>"
+ALB="http://apigateway-alb-408374234.us-east-1.elb.amazonaws.com"
+KEY="7bhS-7AGTTxNxuiP0fkoFu7jU_mIwVe6RYUZjKyzLds"
 ```
 
 1. Check health:
 ```bash
 curl -s $ALB/healthz | jq .
 ```
-*(Shows: `{"status": "ok", "checks": {"database": true, "redis": true}}`)*
+*(Returns: `{"status": "ok", "checks": {"database": true, "redis": true}}`)*
 
 2. Send a burst of 15 requests to trigger the rate limiter:
 ```bash
@@ -81,8 +81,8 @@ done
 ```
 
 **What the Audience Sees**:
-- First 10 requests return `HTTP 200`
-- Requests 11–15 return `HTTP 429` (Rate Limited!)
+- Initial requests are accepted through the gateway
+- Following requests immediately return **`HTTP 429` (Rate Limited / Too Many Requests)**!
 
 **What to Say**:
 > - *"Notice the atomic rate limiting in action: the first 10 requests are allowed, and subsequent requests immediately return HTTP 429 Too Many Requests."*
@@ -96,7 +96,7 @@ done
 
 **What to Do**:
 ```bash
-ssh -i ~/.ssh/Api-gateway-demo.pem ec2-user@<INSTANCE_PUBLIC_IP>
+ssh -i ~/.ssh/Api-gateway-demo.pem ec2-user@54.166.105.141
 sudo systemctl stop docker
 exit
 ```
